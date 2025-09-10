@@ -3,7 +3,7 @@ import cors from 'cors'
 import fs from 'fs'
 import path from 'path'
 import multer from 'multer'
-import { writeCell } from './excel.js'
+import { writeCell, readPreview } from './excel.js'
 import { replacePlaceholders } from './word.js'
 
 const app = express()
@@ -50,6 +50,28 @@ app.post('/excel/write-upload', upload.single('file'), (req, res) => {
   try {
     const result = writeCell({ filePath, sheetName, cell, value })
     res.json({ ...result, uploaded: true, url: `/uploads/${path.basename(filePath)}` })
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message })
+  }
+})
+
+app.post('/excel/preview', (req, res) => {
+  const { filePath, sheetName, maxRows, maxCols } = req.body || {}
+  if (!filePath) return res.status(400).json({ ok: false, error: 'filePath is required' })
+  try {
+    const result = readPreview({ filePath, sheetName, maxRows, maxCols })
+    res.json(result)
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message })
+  }
+})
+
+app.post('/excel/preview-upload', upload.single('file'), (req, res) => {
+  const { sheetName, maxRows, maxCols } = req.body || {}
+  if (!req.file) return res.status(400).json({ ok: false, error: 'file is required' })
+  try {
+    const result = readPreview({ filePath: req.file.path, sheetName, maxRows, maxCols })
+    res.json({ ...result, uploaded: true })
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message })
   }
