@@ -3,7 +3,7 @@ import cors from 'cors'
 import fs from 'fs'
 import path from 'path'
 import multer from 'multer'
-import { writeCell, readPreview, listSheets, writeNamed } from './excel.js'
+import { writeCell, readPreview, listSheets, writeNamed, listNamedRanges } from './excel.js'
 import { replacePlaceholders } from './word.js'
 
 const app = express()
@@ -114,6 +114,27 @@ app.post('/excel/write-named-upload', upload.single('file'), (req, res) => {
   if (!req.file || !name) return res.status(400).json({ ok: false, error: 'file and name are required' })
   try {
     const result = writeNamed({ filePath: req.file.path, name, value })
+    res.json({ ...result, uploaded: true })
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message })
+  }
+})
+
+app.post('/excel/names', (req, res) => {
+  const { filePath } = req.body || {}
+  if (!filePath) return res.status(400).json({ ok: false, error: 'filePath is required' })
+  try {
+    const result = listNamedRanges({ filePath })
+    res.json(result)
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message })
+  }
+})
+
+app.post('/excel/names-upload', upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ ok: false, error: 'file is required' })
+  try {
+    const result = listNamedRanges({ filePath: req.file.path })
     res.json({ ...result, uploaded: true })
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message })

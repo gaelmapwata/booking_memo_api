@@ -61,6 +61,15 @@ function resolveNameToRef(workbook, name) {
   return found?.Ref
 }
 
+export function listNamedRanges({ filePath }) {
+  const resolved = path.resolve(filePath)
+  if (!fs.existsSync(resolved)) throw new Error(`Excel file not found at ${resolved}`)
+  const workbook = XLSX.readFile(resolved)
+  const names = workbook?.Workbook?.Names || []
+  const items = names.map(n => ({ name: n?.Name || '', ref: n?.Ref || '' })).filter(n => n.name)
+  return { ok: true, names: items }
+}
+
 export function writeNamed({ filePath, name, value }) {
   const resolved = path.resolve(filePath)
   if (!fs.existsSync(resolved)) throw new Error(`Excel file not found at ${resolved}`)
