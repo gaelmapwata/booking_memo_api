@@ -13,12 +13,68 @@ export function writeCell({ filePath, sheetName, cell, value }) {
   if (!worksheet) {
     throw new Error(`Sheet not found: ${targetSheetName}`)
   }
-  worksheet[cell] = { t: 's', v: String(value) }
-  if (!worksheet['!ref']) {
-    worksheet['!ref'] = cell
-  }
+  const cellAddr = XLSX.utils.decode_cell(cell)
+  const isNumeric = typeof value === 'number' || (typeof value === 'string' && value.trim() !== '' && !isNaN(Number(value)))
+  worksheet[cell] = isNumeric ? { t: 'n', v: Number(value) } : { t: 's', v: String(value) }
+
+  // Expand sheet range to include the written cell
+  const currentRef = worksheet['!ref'] || cell
+  const range = XLSX.utils.decode_range(currentRef)
+  range.s.r = Math.min(range.s.r, cellAddr.r)
+  range.s.c = Math.min(range.s.c, cellAddr.c)
+  range.e.r = Math.max(range.e.r, cellAddr.r)
+  range.e.c = Math.max(range.e.c, cellAddr.c)
+  worksheet['!ref'] = XLSX.utils.encode_range(range)
   XLSX.writeFile(workbook, resolved)
   return { ok: true, filePath: resolved, sheetName: targetSheetName, cell, value }
+}
+
+function getMergeTopLeftIfAny(worksheet, cell) {
+  const merges = worksheet['!merges'] || []
+  const addr = XLSX.utils.decode_cell(cell)
+  for (const m of merges) {
+    // m has s(start) and e(end) with r(row), c(col)
+    if (addr.r >= m.s.r && addr.r <= m.e.r && addr.c >= m.s.c && addr.c <= m.e.c) {
+      return XLSX.utils.encode_cell({ r: m.s.r, c: m.s.c })
+    }
+  }
+  return cell
+}
+
+export function writeCellsBulk({ filePath, sheetName, writes, respectMerges = true }) {
+  const resolved = path.resolve(filePath)
+  if (!fs.existsSync(resolved)) throw new Error(`Excel file not found at ${resolved}`)
+  const workbook = XLSX.readFile(resolved)
+  const targetSheetName = sheetName || workbook.SheetNames[0]
+  const worksheet = workbook.Sheets[targetSheetName]
+  if (!worksheet) throw new Error(`Sheet not found: ${targetSheetName}`)
+
+  let currentRef = worksheet['!ref'] || 'A1'
+  let range = XLSX.utils.decode_range(currentRef)
+  const results = []
+
+  for (const w of writes || []) {
+    if (!w) continue
+    let cell = String(w.cell || '').trim()
+    if (!cell) continue
+    if (respectMerges) {
+      cell = getMergeTopLeftIfAny(worksheet, cell)
+    }
+    const cellAddr = XLSX.utils.decode_cell(cell)
+    const isNumeric = typeof w.value === 'number' || (typeof w.value === 'string' && w.value.trim() !== '' && !isNaN(Number(w.value)))
+    worksheet[cell] = isNumeric ? { t: 'n', v: Number(w.value) } : { t: 's', v: String(w.value ?? '') }
+
+    // expand range
+    range.s.r = Math.min(range.s.r, cellAddr.r)
+    range.s.c = Math.min(range.s.c, cellAddr.c)
+    range.e.r = Math.max(range.e.r, cellAddr.r)
+    range.e.c = Math.max(range.e.c, cellAddr.c)
+    results.push({ cell, value: w.value })
+  }
+
+  worksheet['!ref'] = XLSX.utils.encode_range(range)
+  XLSX.writeFile(workbook, resolved)
+  return { ok: true, filePath: resolved, sheetName: targetSheetName, written: results }
 }
 
 export function readPreview({ filePath, sheetName, maxRows = 10, maxCols = 10 }) {
@@ -86,8 +142,18 @@ export function writeNamed({ filePath, name, value }) {
   const cell = `${m[2]}${m[3]}`
   const ws = workbook.Sheets[sheet]
   if (!ws) throw new Error(`Sheet not found: ${sheet}`)
-  ws[cell] = { t: 's', v: String(value) }
-  if (!ws['!ref']) ws['!ref'] = cell
+  const cellAddr = XLSX.utils.decode_cell(cell)
+  const isNumeric = typeof value === 'number' || (typeof value === 'string' && value.trim() !== '' && !isNaN(Number(value)))
+  ws[cell] = isNumeric ? { t: 'n', v: Number(value) } : { t: 's', v: String(value) }
+
+  // Expand sheet range to include the written cell
+  const currentRef = ws['!ref'] || cell
+  const range = XLSX.utils.decode_range(currentRef)
+  range.s.r = Math.min(range.s.r, cellAddr.r)
+  range.s.c = Math.min(range.s.c, cellAddr.c)
+  range.e.r = Math.max(range.e.r, cellAddr.r)
+  range.e.c = Math.max(range.e.c, cellAddr.c)
+  ws['!ref'] = XLSX.utils.encode_range(range)
   XLSX.writeFile(workbook, resolved)
   return { ok: true, filePath: resolved, sheetName: sheet, cell, name }
 } 

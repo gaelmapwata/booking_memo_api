@@ -3,7 +3,7 @@ import cors from 'cors'
 import fs from 'fs'
 import path from 'path'
 import multer from 'multer'
-import { writeCell, readPreview, listSheets, writeNamed, listNamedRanges } from './excel.js'
+import { writeCell, readPreview, listSheets, writeNamed, listNamedRanges, writeCellsBulk } from './excel.js'
 import { replacePlaceholders } from './word.js'
 
 const app = express()
@@ -36,6 +36,37 @@ app.post('/excel/write', (req, res) => {
   try {
     const result = writeCell({ filePath, sheetName, cell, value })
     res.json(result)
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message })
+  }
+})
+
+app.post('/excel/write-bulk', (req, res) => {
+  const { filePath, sheetName, writes, respectMerges } = req.body || {}
+  if (!filePath || !Array.isArray(writes)) {
+    return res.status(400).json({ ok: false, error: 'filePath and writes[] are required' })
+  }
+  try {
+    const result = writeCellsBulk({ filePath, sheetName, writes, respectMerges: respectMerges !== false })
+    res.json(result)
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message })
+  }
+})
+
+app.post('/excel/write-bulk-upload', upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ ok: false, error: 'file is required' })
+  let writes
+  try {
+    writes = req.body?.writes ? JSON.parse(req.body.writes) : []
+  } catch (e) {
+    return res.status(400).json({ ok: false, error: 'Invalid JSON in writes' })
+  }
+  const sheetName = req.body?.sheetName || undefined
+  const respectMerges = req.body?.respectMerges !== 'false'
+  try {
+    const result = writeCellsBulk({ filePath: req.file.path, sheetName, writes, respectMerges })
+    res.json({ ...result, uploaded: true, url: `/uploads/${path.basename(req.file.path)}` })
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message })
   }
