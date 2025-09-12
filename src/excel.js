@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import XLSX from 'xlsx'
 
-export function writeCell({ filePath, sheetName, cell, value }) {
+export function writeCell({ filePath, sheetName, cell, value, outputPath }) {
   const resolved = path.resolve(filePath)
   if (!fs.existsSync(resolved)) {
     throw new Error(`Excel file not found at ${resolved}`)
@@ -25,8 +25,13 @@ export function writeCell({ filePath, sheetName, cell, value }) {
   range.e.r = Math.max(range.e.r, cellAddr.r)
   range.e.c = Math.max(range.e.c, cellAddr.c)
   worksheet['!ref'] = XLSX.utils.encode_range(range)
-  XLSX.writeFile(workbook, resolved)
-  return { ok: true, filePath: resolved, sheetName: targetSheetName, cell, value }
+  const outPath = outputPath ? path.resolve(outputPath) : resolved
+  if (outputPath) {
+    const dir = path.dirname(outPath)
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  }
+  XLSX.writeFile(workbook, outPath)
+  return { ok: true, filePath: outPath, sheetName: targetSheetName, cell, value }
 }
 
 function getMergeTopLeftIfAny(worksheet, cell) {
@@ -41,7 +46,7 @@ function getMergeTopLeftIfAny(worksheet, cell) {
   return cell
 }
 
-export function writeCellsBulk({ filePath, sheetName, writes, respectMerges = true }) {
+export function writeCellsBulk({ filePath, sheetName, writes, respectMerges = true, outputPath }) {
   const resolved = path.resolve(filePath)
   if (!fs.existsSync(resolved)) throw new Error(`Excel file not found at ${resolved}`)
   const workbook = XLSX.readFile(resolved)
@@ -73,8 +78,13 @@ export function writeCellsBulk({ filePath, sheetName, writes, respectMerges = tr
   }
 
   worksheet['!ref'] = XLSX.utils.encode_range(range)
-  XLSX.writeFile(workbook, resolved)
-  return { ok: true, filePath: resolved, sheetName: targetSheetName, written: results }
+  const outPath = outputPath ? path.resolve(outputPath) : resolved
+  if (outputPath) {
+    const dir = path.dirname(outPath)
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  }
+  XLSX.writeFile(workbook, outPath)
+  return { ok: true, filePath: outPath, sheetName: targetSheetName, written: results }
 }
 
 export function readPreview({ filePath, sheetName, maxRows = 10, maxCols = 10 }) {
@@ -126,7 +136,7 @@ export function listNamedRanges({ filePath }) {
   return { ok: true, names: items }
 }
 
-export function writeNamed({ filePath, name, value }) {
+export function writeNamed({ filePath, name, value, outputPath }) {
   const resolved = path.resolve(filePath)
   if (!fs.existsSync(resolved)) throw new Error(`Excel file not found at ${resolved}`)
   const workbook = XLSX.readFile(resolved)
@@ -154,6 +164,11 @@ export function writeNamed({ filePath, name, value }) {
   range.e.r = Math.max(range.e.r, cellAddr.r)
   range.e.c = Math.max(range.e.c, cellAddr.c)
   ws['!ref'] = XLSX.utils.encode_range(range)
-  XLSX.writeFile(workbook, resolved)
-  return { ok: true, filePath: resolved, sheetName: sheet, cell, name }
+  const outPath = outputPath ? path.resolve(outputPath) : resolved
+  if (outputPath) {
+    const dir = path.dirname(outPath)
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  }
+  XLSX.writeFile(workbook, outPath)
+  return { ok: true, filePath: outPath, sheetName: sheet, cell, name }
 } 

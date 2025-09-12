@@ -10,7 +10,7 @@ const app = express()
 app.use(cors())
 app.use(express.json())
 
-const uploadDir = path.resolve('uploads')
+const uploadDir = path.resolve(process.env.UPLOADS_DIR || 'uploads')
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir)
 app.use('/uploads', express.static(uploadDir))
 
@@ -29,12 +29,12 @@ app.get('/health', (req, res) => {
 })
 
 app.post('/excel/write', (req, res) => {
-  const { filePath, sheetName, cell, value } = req.body || {}
+  const { filePath, sheetName, cell, value, outputPath } = req.body || {}
   if (!filePath || !cell) {
     return res.status(400).json({ ok: false, error: 'filePath and cell are required' })
   }
   try {
-    const result = writeCell({ filePath, sheetName, cell, value })
+    const result = writeCell({ filePath, sheetName, cell, value, outputPath })
     res.json(result)
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message })
@@ -42,12 +42,12 @@ app.post('/excel/write', (req, res) => {
 })
 
 app.post('/excel/write-bulk', (req, res) => {
-  const { filePath, sheetName, writes, respectMerges } = req.body || {}
+  const { filePath, sheetName, writes, respectMerges, outputPath } = req.body || {}
   if (!filePath || !Array.isArray(writes)) {
     return res.status(400).json({ ok: false, error: 'filePath and writes[] are required' })
   }
   try {
-    const result = writeCellsBulk({ filePath, sheetName, writes, respectMerges: respectMerges !== false })
+    const result = writeCellsBulk({ filePath, sheetName, writes, respectMerges: respectMerges !== false, outputPath })
     res.json(result)
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message })
@@ -65,7 +65,8 @@ app.post('/excel/write-bulk-upload', upload.single('file'), (req, res) => {
   const sheetName = req.body?.sheetName || undefined
   const respectMerges = req.body?.respectMerges !== 'false'
   try {
-    const result = writeCellsBulk({ filePath: req.file.path, sheetName, writes, respectMerges })
+    const outputPath = req.body?.outputPath || undefined
+    const result = writeCellsBulk({ filePath: req.file.path, sheetName, writes, respectMerges, outputPath })
     res.json({ ...result, uploaded: true, url: `/uploads/${path.basename(req.file.path)}` })
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message })
@@ -73,14 +74,21 @@ app.post('/excel/write-bulk-upload', upload.single('file'), (req, res) => {
 })
 
 app.post('/excel/write-upload', upload.single('file'), (req, res) => {
-  const { sheetName, cell, value } = req.body || {}
+  const { sheetName, cell, value, destDir } = req.body || {}
   if (!req.file || !cell) {
     return res.status(400).json({ ok: false, error: 'file and cell are required' })
   }
   const filePath = req.file.path
   try {
     const result = writeCell({ filePath, sheetName, cell, value })
-    res.json({ ...result, uploaded: true, url: `/uploads/${path.basename(filePath)}` })
+    let copiedTo
+    if (destDir) {
+      const abs = path.resolve(destDir)
+      if (!fs.existsSync(abs)) fs.mkdirSync(abs, { recursive: true })
+      copiedTo = path.join(abs, path.basename(filePath))
+      fs.copyFileSync(filePath, copiedTo)
+    }
+    res.json({ ...result, uploaded: true, url: `/uploads/${path.basename(filePath)}`, copiedTo })
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message })
   }
@@ -130,10 +138,10 @@ app.post('/excel/sheets-upload', upload.single('file'), (req, res) => {
 })
 
 app.post('/excel/write-named', (req, res) => {
-  const { filePath, name, value } = req.body || {}
+  const { filePath, name, value, outputPath } = req.body || {}
   if (!filePath || !name) return res.status(400).json({ ok: false, error: 'filePath and name are required' })
   try {
-    const result = writeNamed({ filePath, name, value })
+    const result = writeNamed({ filePath, name, value, outputPath })
     res.json(result)
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message })
@@ -141,11 +149,18 @@ app.post('/excel/write-named', (req, res) => {
 })
 
 app.post('/excel/write-named-upload', upload.single('file'), (req, res) => {
-  const { name, value } = req.body || {}
+  const { name, value, destDir } = req.body || {}
   if (!req.file || !name) return res.status(400).json({ ok: false, error: 'file and name are required' })
   try {
     const result = writeNamed({ filePath: req.file.path, name, value })
-    res.json({ ...result, uploaded: true })
+    let copiedTo
+    if (destDir) {
+      const abs = path.resolve(destDir)
+      if (!fs.existsSync(abs)) fs.mkdirSync(abs, { recursive: true })
+      copiedTo = path.join(abs, path.basename(req.file.path))
+      fs.copyFileSync(req.file.path, copiedTo)
+    }
+    res.json({ ...result, uploaded: true, copiedTo })
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message })
   }
@@ -199,7 +214,8 @@ app.post('/word/replace-upload', upload.single('file'), (req, res) => {
   }
   try {
     const result = replacePlaceholders({ templatePath, outputPath, replacements: parsed })
-    res.json({ ...result, uploaded: true, templateUrl: `/uploads/${path.basename(templatePath)}` })
+    const outputUrl = `/uploads/${path.basename(result.outputPath)}`
+    res.json({ ...result, uploaded: true, templateUrl: `/uploads/${path.basename(templatePath)}`, outputUrl })
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message })
   }
